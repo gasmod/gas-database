@@ -20,7 +20,7 @@ var (
 func newTestModule(t *testing.T) *Module {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "test.db")
-	m := New(WithConfig(Config{
+	m := New(WithConfig(&Config{
 		Driver: "sqlite",
 		DSN:    dsn,
 	}))
@@ -59,7 +59,7 @@ func TestNew_Defaults(t *testing.T) {
 }
 
 func TestNew_WithConfig(t *testing.T) {
-	cfg := Config{
+	cfg := &Config{
 		Driver:          "sqlite",
 		DSN:             ":memory:",
 		MaxOpenConns:    10,
