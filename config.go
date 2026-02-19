@@ -53,6 +53,10 @@ type Config struct {
 	// MaxOpenConns is the maximum number of open connections to the database.
 	DatabaseMaxOpenConns int32
 
+	// hasConnector is set internally when a driver.Connector is provided.
+	// When true, DatabaseDriver and DatabaseDSN are not required in ModeSQL.
+	hasConnector bool
+
 	// MaxIdleConns is the maximum number of idle connections in the pool.
 	// Only used in ModeSQL; pgx manages idle connections internally.
 	DatabaseMaxIdleConns int
@@ -62,10 +66,6 @@ type Config struct {
 
 	// ConnMaxIdleTime is the maximum amount of time a connection may be idle.
 	DatabaseConnMaxIdleTime time.Duration
-
-	// hasConnector is set internally when a driver.Connector is provided.
-	// When true, DatabaseDriver and DatabaseDSN are not required in ModeSQL.
-	hasConnector bool
 }
 
 // DefaultConfig returns a Config with sensible defaults using database/sql.
