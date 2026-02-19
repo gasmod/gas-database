@@ -35,8 +35,8 @@ import (
 
 func main() {
 	dbMod := database.New(database.WithConfig(&database.Config{
-		DSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
-		Driver: "pgx",
+		DatabaseDSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+		DatabaseDriver: "pgx",
 	}))
 
 	app := gas.NewApp(
@@ -52,8 +52,8 @@ func main() {
 
 ```go
 dbMod := database.New(database.WithConfig(&database.Config{
-	Mode: database.ModePgx,
-	DSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+	DatabaseMode: database.ModePgx,
+	DatabaseDSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
 }))
 
 // After Init(), both are available:
@@ -67,8 +67,8 @@ dbMod := database.New(database.WithConfig(&database.Config{
 import _ "modernc.org/sqlite"
 
 dbMod := database.New(database.WithConfig(database.Config{
-	Driver: "sqlite",
-	DSN:    "./app.db",
+	DatabaseDriver: "sqlite",
+	DatabaseDSN:    "./app.db",
 }))
 ```
 
@@ -141,15 +141,15 @@ err := dbMod.WithTx(ctx, nil, func(tx *sql.Tx) error {
 
 ## Config
 
-| Field             | Default      | Description                               |
-|-------------------|--------------|-------------------------------------------|
-| `Mode`            | `"sql"`      | Backend mode: `"sql"` or `"pgx"`          |
-| `Driver`          | `"postgres"` | `database/sql` driver name (ModeSQL only) |
-| `DSN`             |              | Connection string (required)              |
-| `MaxOpenConns`    | `25`         | Max open connections                      |
-| `MaxIdleConns`    | `5`          | Max idle connections (ModeSQL only)       |
-| `ConnMaxLifetime` | `30m`        | Max connection reuse time                 |
-| `ConnMaxIdleTime` | `5m`         | Max connection idle time                  |
+| Field                     | Default      | Description                               |
+|---------------------------|--------------|-------------------------------------------|
+| `DatabaseMode`            | `"sql"`      | Backend mode: `"sql"` or `"pgx"`          |
+| `DatabaseDriver`          | `"postgres"` | `database/sql` driver name (ModeSQL only) |
+| `DatabaseDSN`             |              | Connection string (required)              |
+| `DatabaseMaxOpenConns`    | `25`         | Max open connections                      |
+| `DatabaseMaxIdleConns`    | `5`          | Max idle connections (ModeSQL only)       |
+| `DatabaseConnMaxLifetime` | `30m`        | Max connection reuse time                 |
+| `DatabaseConnMaxIdleTime` | `5m`         | Max connection idle time                  |
 
 ## DBTX Interface
 

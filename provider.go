@@ -14,11 +14,11 @@ var _ gas.DatabaseProvider = (*Module)(nil)
 // backed by *sql.Rows which natively satisfies the interface.
 func (m *Module) Query(ctx context.Context, query string, args ...any) (gas.Rows, error) {
 	if m.closed.Load() {
-		return nil, fmt.Errorf("gas-database: module is closed")
+		return nil, fmt.Errorf("%s: module is closed", m.Name())
 	}
 	rows, err := m.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("gas-database: query: %w", err)
+		return nil, fmt.Errorf("%s: query: %w", m.Name(), err)
 	}
 	return rows, nil
 }
@@ -27,11 +27,11 @@ func (m *Module) Query(ctx context.Context, query string, args ...any) (gas.Rows
 // gas.Result is backed by sql.Result which natively satisfies the interface.
 func (m *Module) Exec(ctx context.Context, query string, args ...any) (gas.Result, error) {
 	if m.closed.Load() {
-		return nil, fmt.Errorf("gas-database: module is closed")
+		return nil, fmt.Errorf("%s: module is closed", m.Name())
 	}
 	result, err := m.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("gas-database: exec: %w", err)
+		return nil, fmt.Errorf("%s: exec: %w", m.Name(), err)
 	}
 	return result, nil
 }

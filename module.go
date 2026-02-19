@@ -6,8 +6,14 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/gasmod/gas"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+)
+
+const (
+	moduleName = "gas-database"
 )
 
 // Module manages a database connection and implements both gas.Module
@@ -15,10 +21,12 @@ import (
 // In ModePgx it creates a native pgxpool.Pool and derives *sql.DB from
 // it via the pgx stdlib adapter, so DB() always works regardless of mode.
 type Module struct {
-	db     *sql.DB
-	pool   *pgxpool.Pool // non-nil only in ModePgx
-	cfg    *Config
-	closed atomic.Bool
+	db                   *sql.DB
+	pool                 *pgxpool.Pool // non-nil only in ModePgx
+	cfg                  *Config
+	cfgProvider          gas.ConfigProvider
+	customConfigProvided bool
+	closed               atomic.Bool
 }
 
 // Option configures a Module.
@@ -28,6 +36,14 @@ type Option func(*Module)
 func WithConfig(cfg *Config) Option {
 	return func(m *Module) {
 		m.cfg = cfg
+		m.customConfigProvided = true
+	}
+}
+
+// WithConfigProvider sets a configuration provider for the Module.
+func WithConfigProvider(provider gas.ConfigProvider) Option {
+	return func(m *Module) {
+		m.cfgProvider = provider
 	}
 }
 
@@ -45,17 +61,26 @@ func New(opts ...Option) *Module {
 
 // Name returns the module identifier.
 func (m *Module) Name() string {
-	return "gas-database"
+	return moduleName
 }
 
 // Init opens the database connection, configures the pool, and pings
 // the database to verify connectivity.
 func (m *Module) Init() error {
-	if m.cfg.DSN == "" {
-		return fmt.Errorf("gas-database: DSN is required")
+	if !m.customConfigProvided {
+		// no custom config provided, try to bind from config-module
+		if m.cfgProvider != nil {
+			if err := m.cfgProvider.Bind(m.cfg); err != nil {
+				return fmt.Errorf("%s: config binding: %w", m.Name(), err)
+			}
+		}
 	}
 
-	switch m.cfg.Mode {
+	if err := m.cfg.Validate(); err != nil {
+		return err
+	}
+
+	switch m.cfg.DatabaseMode {
 	case ModePgx:
 		if err := m.initPgx(); err != nil {
 			return err
@@ -65,7 +90,7 @@ func (m *Module) Init() error {
 			return err
 		}
 	default:
-		return fmt.Errorf("gas-database: unknown mode %q", m.cfg.Mode)
+		return fmt.Errorf("%s: unknown mode %q", m.Name(), m.cfg.DatabaseMode)
 	}
 
 	m.closed.Store(false)
@@ -73,22 +98,22 @@ func (m *Module) Init() error {
 }
 
 func (m *Module) initSQL() error {
-	db, err := sql.Open(m.cfg.Driver, m.cfg.DSN)
+	db, err := sql.Open(m.cfg.DatabaseDriver, m.cfg.DatabaseDSN)
 	if err != nil {
-		return fmt.Errorf("gas-database: open: %w", err)
+		return fmt.Errorf("%s: open: %w", m.Name(), err)
 	}
 
-	db.SetMaxOpenConns(int(m.cfg.MaxOpenConns))
-	db.SetMaxIdleConns(m.cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(m.cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(m.cfg.ConnMaxIdleTime)
+	db.SetMaxOpenConns(int(m.cfg.DatabaseMaxOpenConns))
+	db.SetMaxIdleConns(m.cfg.DatabaseMaxIdleConns)
+	db.SetConnMaxLifetime(m.cfg.DatabaseConnMaxLifetime)
+	db.SetConnMaxIdleTime(m.cfg.DatabaseConnMaxIdleTime)
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPingTimeout)
 	defer cancel()
 
-	if err := db.PingContext(ctx); err != nil {
+	if err = db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("gas-database: ping: %w", err)
+		return fmt.Errorf("%s: ping: %w", m.Name(), err)
 	}
 
 	m.db = db
@@ -99,29 +124,29 @@ func (m *Module) initPgx() error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPingTimeout)
 	defer cancel()
 
-	poolCfg, err := pgxpool.ParseConfig(m.cfg.DSN)
+	poolCfg, err := pgxpool.ParseConfig(m.cfg.DatabaseDSN)
 	if err != nil {
-		return fmt.Errorf("gas-database: parse pgx config: %w", err)
+		return fmt.Errorf("%s: parse pgx config: %w", m.Name(), err)
 	}
 
-	if m.cfg.MaxOpenConns > 0 {
-		poolCfg.MaxConns = m.cfg.MaxOpenConns
+	if m.cfg.DatabaseMaxOpenConns > 0 {
+		poolCfg.MaxConns = m.cfg.DatabaseMaxOpenConns
 	}
-	if m.cfg.ConnMaxLifetime > 0 {
-		poolCfg.MaxConnLifetime = m.cfg.ConnMaxLifetime
+	if m.cfg.DatabaseConnMaxLifetime > 0 {
+		poolCfg.MaxConnLifetime = m.cfg.DatabaseConnMaxLifetime
 	}
-	if m.cfg.ConnMaxIdleTime > 0 {
-		poolCfg.MaxConnIdleTime = m.cfg.ConnMaxIdleTime
+	if m.cfg.DatabaseConnMaxIdleTime > 0 {
+		poolCfg.MaxConnIdleTime = m.cfg.DatabaseConnMaxIdleTime
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
-		return fmt.Errorf("gas-database: pgxpool: %w", err)
+		return fmt.Errorf("%s: pgxpool: %w", m.Name(), err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return fmt.Errorf("gas-database: ping: %w", err)
+		return fmt.Errorf("%s: ping: %w", m.Name(), err)
 	}
 
 	m.pool = pool
@@ -135,7 +160,7 @@ func (m *Module) Close() error {
 
 	if m.db != nil {
 		if err := m.db.Close(); err != nil {
-			return fmt.Errorf("gas-database: close: %w", err)
+			return fmt.Errorf("%s: close: %w", m.Name(), err)
 		}
 	}
 
@@ -164,15 +189,15 @@ func (m *Module) Pool() *pgxpool.Pool {
 func (m *Module) Ping(ctx context.Context) error {
 	if m.pool != nil {
 		if err := m.pool.Ping(ctx); err != nil {
-			return fmt.Errorf("gas-database: ping: %w", err)
+			return fmt.Errorf("%s: ping: %w", m.Name(), err)
 		}
 		return nil
 	}
 	if m.db == nil {
-		return fmt.Errorf("gas-database: not initialized")
+		return fmt.Errorf("%s: not initialized", m.Name())
 	}
 	if err := m.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("gas-database: ping: %w", err)
+		return fmt.Errorf("%s: ping: %w", m.Name(), err)
 	}
 	return nil
 }

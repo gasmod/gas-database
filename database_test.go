@@ -1,29 +1,31 @@
-package database
+package database_test
 
 import (
 	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/gasmod/gas"
+	database "github.com/gasmod/gas-database"
+
 	_ "modernc.org/sqlite"
 )
 
 // Compile-time interface checks.
 var (
-	_ gas.Module           = (*Module)(nil)
-	_ gas.DatabaseProvider = (*Module)(nil)
+	_ gas.Module           = (*database.Module)(nil)
+	_ gas.DatabaseProvider = (*database.Module)(nil)
 )
 
-func newTestModule(t *testing.T) *Module {
+func newTestModule(t *testing.T) *database.Module {
 	t.Helper()
-	dsn := filepath.Join(t.TempDir(), "test.db")
-	m := New(WithConfig(&Config{
-		Driver: "sqlite",
-		DSN:    dsn,
-	}))
+
+	cfg := database.DefaultConfig()
+	cfg.DatabaseDriver = "sqlite"
+	cfg.DatabaseDSN = filepath.Join(t.TempDir(), "test.db")
+
+	m := database.New(database.WithConfig(cfg))
 	if err := m.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -32,64 +34,14 @@ func newTestModule(t *testing.T) *Module {
 }
 
 func TestName(t *testing.T) {
-	m := &Module{}
+	m := &database.Module{}
 	if m.Name() != "gas-database" {
 		t.Fatalf("expected gas-database, got %s", m.Name())
 	}
 }
 
-func TestNew_Defaults(t *testing.T) {
-	m := New()
-	defaults := DefaultConfig()
-	if m.cfg.Driver != defaults.Driver {
-		t.Errorf("Driver = %q, want %q", m.cfg.Driver, defaults.Driver)
-	}
-	if m.cfg.MaxOpenConns != defaults.MaxOpenConns {
-		t.Errorf("MaxOpenConns = %d, want %d", m.cfg.MaxOpenConns, defaults.MaxOpenConns)
-	}
-	if m.cfg.MaxIdleConns != defaults.MaxIdleConns {
-		t.Errorf("MaxIdleConns = %d, want %d", m.cfg.MaxIdleConns, defaults.MaxIdleConns)
-	}
-	if m.cfg.ConnMaxLifetime != defaults.ConnMaxLifetime {
-		t.Errorf("ConnMaxLifetime = %v, want %v", m.cfg.ConnMaxLifetime, defaults.ConnMaxLifetime)
-	}
-	if m.cfg.ConnMaxIdleTime != defaults.ConnMaxIdleTime {
-		t.Errorf("ConnMaxIdleTime = %v, want %v", m.cfg.ConnMaxIdleTime, defaults.ConnMaxIdleTime)
-	}
-}
-
-func TestNew_WithConfig(t *testing.T) {
-	cfg := &Config{
-		Driver:          "sqlite",
-		DSN:             ":memory:",
-		MaxOpenConns:    10,
-		MaxIdleConns:    3,
-		ConnMaxLifetime: 15 * time.Minute,
-		ConnMaxIdleTime: 2 * time.Minute,
-	}
-	m := New(WithConfig(cfg))
-	if m.cfg.Driver != "sqlite" {
-		t.Errorf("Driver = %q, want sqlite", m.cfg.Driver)
-	}
-	if m.cfg.DSN != ":memory:" {
-		t.Errorf("DSN = %q, want :memory:", m.cfg.DSN)
-	}
-	if m.cfg.MaxOpenConns != 10 {
-		t.Errorf("MaxOpenConns = %d, want 10", m.cfg.MaxOpenConns)
-	}
-	if m.cfg.MaxIdleConns != 3 {
-		t.Errorf("MaxIdleConns = %d, want 3", m.cfg.MaxIdleConns)
-	}
-	if m.cfg.ConnMaxLifetime != 15*time.Minute {
-		t.Errorf("ConnMaxLifetime = %v, want 15m", m.cfg.ConnMaxLifetime)
-	}
-	if m.cfg.ConnMaxIdleTime != 2*time.Minute {
-		t.Errorf("ConnMaxIdleTime = %v, want 2m", m.cfg.ConnMaxIdleTime)
-	}
-}
-
 func TestInit_NoDSN(t *testing.T) {
-	m := New()
+	m := database.New()
 	if err := m.Init(); err == nil {
 		t.Fatal("expected error for missing DSN")
 	}
@@ -121,7 +73,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestPing_NotInitialized(t *testing.T) {
-	m := New()
+	m := database.New()
 	if err := m.Ping(context.Background()); err == nil {
 		t.Fatal("expected error for uninitialized module")
 	}
@@ -153,7 +105,7 @@ func TestQuery(t *testing.T) {
 
 	var id int
 	var name string
-	if err := rows.Scan(&id, &name); err != nil {
+	if err = rows.Scan(&id, &name); err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
 	if id != 1 || name != "alice" {
@@ -163,7 +115,7 @@ func TestQuery(t *testing.T) {
 	if rows.Next() {
 		t.Error("expected no more rows")
 	}
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		t.Fatalf("Rows.Err: %v", err)
 	}
 }
@@ -378,13 +330,13 @@ func TestDBTX_Satisfied(t *testing.T) {
 	m := newTestModule(t)
 
 	// *sql.DB satisfies DBTX.
-	var _ DBTX = m.DB()
+	var _ database.DBTX = m.DB()
 
 	// *sql.Tx satisfies DBTX.
 	tx, err := m.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
 	}
-	var _ DBTX = tx
+	var _ database.DBTX = tx
 	tx.Rollback()
 }

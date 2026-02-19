@@ -20,11 +20,11 @@ type DBTX interface {
 // for calling Commit or Rollback on the returned *sql.Tx.
 func (m *Module) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	if m.closed.Load() {
-		return nil, fmt.Errorf("gas-database: module is closed")
+		return nil, fmt.Errorf("%s: module is closed", m.Name())
 	}
 	tx, err := m.db.BeginTx(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("gas-database: begin tx: %w", err)
+		return nil, fmt.Errorf("%s: begin tx: %w", m.Name(), err)
 	}
 	return tx, nil
 }
@@ -34,12 +34,12 @@ func (m *Module) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, err
 // inside fn also triggers a rollback.
 func (m *Module) WithTx(ctx context.Context, opts *sql.TxOptions, fn func(*sql.Tx) error) (err error) {
 	if m.closed.Load() {
-		return fmt.Errorf("gas-database: module is closed")
+		return fmt.Errorf("%s: module is closed", m.Name())
 	}
 
 	tx, err := m.db.BeginTx(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("gas-database: begin tx: %w", err)
+		return fmt.Errorf("%s: begin tx: %w", m.Name(), err)
 	}
 
 	defer func() {
