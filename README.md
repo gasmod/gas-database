@@ -61,6 +61,23 @@ dbMod := database.New(database.WithConfig(&database.Config{
 // dbMod.Pool() -> *pgxpool.Pool
 ```
 
+### Using a connector (sql.OpenDB)
+
+When you need full control over connection setup (e.g., custom TLS, auth tokens), pass a `driver.Connector` directly:
+
+```go
+import "github.com/jackc/pgx/v5/stdlib"
+
+connConfig, _ := pgx.ParseConfig("postgres://user:pass@localhost:5432/mydb")
+connector := stdlib.GetConnector(*connConfig)
+
+dbMod := database.New(
+	database.WithConnector(connector),
+)
+```
+
+When a connector is provided, `DatabaseDriver` and `DatabaseDSN` are not required.
+
 ### SQLite
 
 ```go
@@ -141,15 +158,15 @@ err := dbMod.WithTx(ctx, nil, func(tx *sql.Tx) error {
 
 ## Config
 
-| Field                     | Default      | Description                               |
-|---------------------------|--------------|-------------------------------------------|
-| `DatabaseMode`            | `"sql"`      | Backend mode: `"sql"` or `"pgx"`          |
-| `DatabaseDriver`          | `"postgres"` | `database/sql` driver name (ModeSQL only) |
-| `DatabaseDSN`             |              | Connection string (required)              |
-| `DatabaseMaxOpenConns`    | `25`         | Max open connections                      |
-| `DatabaseMaxIdleConns`    | `5`          | Max idle connections (ModeSQL only)       |
-| `DatabaseConnMaxLifetime` | `30m`        | Max connection reuse time                 |
-| `DatabaseConnMaxIdleTime` | `5m`         | Max connection idle time                  |
+| Field                     | Default      | Description                                               |
+|---------------------------|--------------|-----------------------------------------------------------|
+| `DatabaseMode`            | `"sql"`      | Backend mode: `"sql"` or `"pgx"`                          |
+| `DatabaseDriver`          | `"postgres"` | `database/sql` driver name (ModeSQL only)                 |
+| `DatabaseDSN`             |              | Connection string (required unless using `WithConnector`) |
+| `DatabaseMaxOpenConns`    | `25`         | Max open connections                                      |
+| `DatabaseMaxIdleConns`    | `5`          | Max idle connections (ModeSQL only)                       |
+| `DatabaseConnMaxLifetime` | `30m`        | Max connection reuse time                                 |
+| `DatabaseConnMaxIdleTime` | `5m`         | Max connection idle time                                  |
 
 ## DBTX Interface
 

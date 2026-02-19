@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"sync/atomic"
 
@@ -23,6 +24,7 @@ const (
 type Module struct {
 	db                   *sql.DB
 	pool                 *pgxpool.Pool // non-nil only in ModePgx
+	connector            driver.Connector
 	cfg                  *Config
 	cfgProvider          gas.ConfigProvider
 	customConfigProvided bool
@@ -37,6 +39,15 @@ func WithConfig(cfg *Config) Option {
 	return func(m *Module) {
 		m.cfg = cfg
 		m.customConfigProvided = true
+	}
+}
+
+// WithConnector sets a driver.Connector for ModeSQL. When provided,
+// sql.OpenDB(connector) is used instead of sql.Open(driver, dsn), and
+// DatabaseDriver / DatabaseDSN are not required.
+func WithConnector(c driver.Connector) Option {
+	return func(m *Module) {
+		m.connector = c
 	}
 }
 
@@ -76,6 +87,8 @@ func (m *Module) Init() error {
 		}
 	}
 
+	m.cfg.hasConnector = m.connector != nil
+
 	if err := m.cfg.Validate(); err != nil {
 		return err
 	}
@@ -98,9 +111,15 @@ func (m *Module) Init() error {
 }
 
 func (m *Module) initSQL() error {
-	db, err := sql.Open(m.cfg.DatabaseDriver, m.cfg.DatabaseDSN)
-	if err != nil {
-		return fmt.Errorf("%s: open: %w", m.Name(), err)
+	var db *sql.DB
+	if m.connector != nil {
+		db = sql.OpenDB(m.connector)
+	} else {
+		var err error
+		db, err = sql.Open(m.cfg.DatabaseDriver, m.cfg.DatabaseDSN)
+		if err != nil {
+			return fmt.Errorf("%s: open: %w", m.Name(), err)
+		}
 	}
 
 	db.SetMaxOpenConns(int(m.cfg.DatabaseMaxOpenConns))
@@ -111,7 +130,7 @@ func (m *Module) initSQL() error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPingTimeout)
 	defer cancel()
 
-	if err = db.PingContext(ctx); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return fmt.Errorf("%s: ping: %w", m.Name(), err)
 	}

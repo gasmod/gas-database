@@ -62,6 +62,10 @@ type Config struct {
 
 	// ConnMaxIdleTime is the maximum amount of time a connection may be idle.
 	DatabaseConnMaxIdleTime time.Duration
+
+	// hasConnector is set internally when a driver.Connector is provided.
+	// When true, DatabaseDriver and DatabaseDSN are not required in ModeSQL.
+	hasConnector bool
 }
 
 // DefaultConfig returns a Config with sensible defaults using database/sql.
@@ -99,10 +103,10 @@ func (c *Config) Validate() error {
 	if !validModes[c.DatabaseMode] {
 		return fmt.Errorf("DatabaseMode must be one of [%s, %s], got %q", ModeSQL, ModePgx, c.DatabaseMode)
 	}
-	if c.DatabaseMode == ModeSQL && !validDrivers[c.DatabaseDriver] {
+	if c.DatabaseMode == ModeSQL && !c.hasConnector && !validDrivers[c.DatabaseDriver] {
 		return fmt.Errorf("DatabaseDriver must be one of [%s, %s, %s], got %q", DriverPostgres, DriverPgx, DriverSQLite, c.DatabaseDriver)
 	}
-	if c.DatabaseDSN == "" {
+	if c.DatabaseDSN == "" && !c.hasConnector {
 		return errors.New("DatabaseDSN must not be empty")
 	}
 	if c.DatabaseMaxOpenConns < minMaxOpenConns || c.DatabaseMaxOpenConns > maxMaxOpenConns {
