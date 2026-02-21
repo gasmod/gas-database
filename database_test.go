@@ -14,49 +14,49 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ gas.Module           = (*database.Module)(nil)
-	_ gas.DatabaseProvider = (*database.Module)(nil)
+	_ gas.Service          = (*database.Service)(nil)
+	_ gas.DatabaseProvider = (*database.Service)(nil)
 )
 
-func newTestModule(t *testing.T) *database.Module {
+func newTestService(t *testing.T) *database.Service {
 	t.Helper()
 
 	cfg := database.DefaultConfig()
 	cfg.DatabaseDriver = "sqlite"
 	cfg.DatabaseDSN = filepath.Join(t.TempDir(), "test.db")
 
-	m := database.New(database.WithConfig(cfg))
-	if err := m.Init(); err != nil {
+	s := database.New(database.WithConfig(cfg))(nil)
+	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	t.Cleanup(func() { m.Close() })
-	return m
+	t.Cleanup(func() { s.Close() })
+	return s
 }
 
 func TestName(t *testing.T) {
-	m := &database.Module{}
-	if m.Name() != "gas-database" {
-		t.Fatalf("expected gas-database, got %s", m.Name())
+	s := database.New()(nil)
+	if s.Name() != "gas-database" {
+		t.Fatalf("expected gas-database, got %s", s.Name())
 	}
 }
 
 func TestInit_NoDSN(t *testing.T) {
-	m := database.New()
-	if err := m.Init(); err == nil {
+	s := database.New()(nil)
+	if err := s.Init(); err == nil {
 		t.Fatal("expected error for missing DSN")
 	}
 }
 
 func TestInit_Close_Lifecycle(t *testing.T) {
-	m := newTestModule(t)
-	if m.DB() == nil {
+	s := newTestService(t)
+	if s.DB() == nil {
 		t.Fatal("DB() should not be nil after Init")
 	}
 }
 
 func TestDB_ReturnsConnection(t *testing.T) {
-	m := newTestModule(t)
-	db := m.DB()
+	s := newTestService(t)
+	db := s.DB()
 	if db == nil {
 		t.Fatal("DB() returned nil")
 	}
@@ -66,34 +66,34 @@ func TestDB_ReturnsConnection(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	m := newTestModule(t)
-	if err := m.Ping(context.Background()); err != nil {
+	s := newTestService(t)
+	if err := s.Ping(context.Background()); err != nil {
 		t.Fatalf("Ping: %v", err)
 	}
 }
 
 func TestPing_NotInitialized(t *testing.T) {
-	m := database.New()
-	if err := m.Ping(context.Background()); err == nil {
-		t.Fatal("expected error for uninitialized module")
+	s := database.New()(nil)
+	if err := s.Ping(context.Background()); err == nil {
+		t.Fatal("expected error for uninitialized service")
 	}
 }
 
 func TestQuery(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 	ctx := context.Background()
 
-	_, err := m.Exec(ctx, "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
+	_, err := s.Exec(ctx, "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
 	if err != nil {
 		t.Fatalf("CREATE TABLE: %v", err)
 	}
 
-	_, err = m.Exec(ctx, "INSERT INTO test (id, name) VALUES (?, ?)", 1, "alice")
+	_, err = s.Exec(ctx, "INSERT INTO test (id, name) VALUES (?, ?)", 1, "alice")
 	if err != nil {
 		t.Fatalf("INSERT: %v", err)
 	}
 
-	rows, err := m.Query(ctx, "SELECT id, name FROM test WHERE id = ?", 1)
+	rows, err := s.Query(ctx, "SELECT id, name FROM test WHERE id = ?", 1)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -121,15 +121,15 @@ func TestQuery(t *testing.T) {
 }
 
 func TestExec(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 	ctx := context.Background()
 
-	_, err := m.Exec(ctx, "CREATE TABLE test2 (id INTEGER PRIMARY KEY, val TEXT)")
+	_, err := s.Exec(ctx, "CREATE TABLE test2 (id INTEGER PRIMARY KEY, val TEXT)")
 	if err != nil {
 		t.Fatalf("CREATE TABLE: %v", err)
 	}
 
-	result, err := m.Exec(ctx, "INSERT INTO test2 (id, val) VALUES (?, ?)", 1, "hello")
+	result, err := s.Exec(ctx, "INSERT INTO test2 (id, val) VALUES (?, ?)", 1, "hello")
 	if err != nil {
 		t.Fatalf("INSERT: %v", err)
 	}
@@ -144,35 +144,35 @@ func TestExec(t *testing.T) {
 }
 
 func TestQuery_Closed(t *testing.T) {
-	m := newTestModule(t)
-	m.Close()
+	s := newTestService(t)
+	s.Close()
 
-	_, err := m.Query(context.Background(), "SELECT 1")
+	_, err := s.Query(context.Background(), "SELECT 1")
 	if err == nil {
-		t.Fatal("expected error when module is closed")
+		t.Fatal("expected error when service is closed")
 	}
 }
 
 func TestExec_Closed(t *testing.T) {
-	m := newTestModule(t)
-	m.Close()
+	s := newTestService(t)
+	s.Close()
 
-	_, err := m.Exec(context.Background(), "SELECT 1")
+	_, err := s.Exec(context.Background(), "SELECT 1")
 	if err == nil {
-		t.Fatal("expected error when module is closed")
+		t.Fatal("expected error when service is closed")
 	}
 }
 
 func TestBeginTx(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 	ctx := context.Background()
 
-	_, err := m.Exec(ctx, "CREATE TABLE tx_test (id INTEGER PRIMARY KEY, val TEXT)")
+	_, err := s.Exec(ctx, "CREATE TABLE tx_test (id INTEGER PRIMARY KEY, val TEXT)")
 	if err != nil {
 		t.Fatalf("CREATE TABLE: %v", err)
 	}
 
-	tx, err := m.BeginTx(ctx, nil)
+	tx, err := s.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestBeginTx(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	rows, err := m.Query(ctx, "SELECT val FROM tx_test WHERE id = ?", 1)
+	rows, err := s.Query(ctx, "SELECT val FROM tx_test WHERE id = ?", 1)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -205,25 +205,25 @@ func TestBeginTx(t *testing.T) {
 }
 
 func TestBeginTx_Closed(t *testing.T) {
-	m := newTestModule(t)
-	m.Close()
+	s := newTestService(t)
+	s.Close()
 
-	_, err := m.BeginTx(context.Background(), nil)
+	_, err := s.BeginTx(context.Background(), nil)
 	if err == nil {
-		t.Fatal("expected error when module is closed")
+		t.Fatal("expected error when service is closed")
 	}
 }
 
 func TestWithTx_Commit(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 	ctx := context.Background()
 
-	_, err := m.Exec(ctx, "CREATE TABLE withtx_test (id INTEGER PRIMARY KEY, val TEXT)")
+	_, err := s.Exec(ctx, "CREATE TABLE withtx_test (id INTEGER PRIMARY KEY, val TEXT)")
 	if err != nil {
 		t.Fatalf("CREATE TABLE: %v", err)
 	}
 
-	err = m.WithTx(ctx, nil, func(tx *sql.Tx) error {
+	err = s.WithTx(ctx, nil, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO withtx_test (id, val) VALUES (?, ?)", 1, "committed")
 		return err
 	})
@@ -231,7 +231,7 @@ func TestWithTx_Commit(t *testing.T) {
 		t.Fatalf("WithTx: %v", err)
 	}
 
-	rows, err := m.Query(ctx, "SELECT val FROM withtx_test WHERE id = ?", 1)
+	rows, err := s.Query(ctx, "SELECT val FROM withtx_test WHERE id = ?", 1)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -250,15 +250,15 @@ func TestWithTx_Commit(t *testing.T) {
 }
 
 func TestWithTx_Rollback(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 	ctx := context.Background()
 
-	_, err := m.Exec(ctx, "CREATE TABLE withtx_rb (id INTEGER PRIMARY KEY, val TEXT)")
+	_, err := s.Exec(ctx, "CREATE TABLE withtx_rb (id INTEGER PRIMARY KEY, val TEXT)")
 	if err != nil {
 		t.Fatalf("CREATE TABLE: %v", err)
 	}
 
-	err = m.WithTx(ctx, nil, func(tx *sql.Tx) error {
+	err = s.WithTx(ctx, nil, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO withtx_rb (id, val) VALUES (?, ?)", 1, "rolled-back")
 		if err != nil {
 			return err
@@ -269,7 +269,7 @@ func TestWithTx_Rollback(t *testing.T) {
 		t.Fatal("expected error from WithTx")
 	}
 
-	rows, err := m.Query(ctx, "SELECT val FROM withtx_rb WHERE id = ?", 1)
+	rows, err := s.Query(ctx, "SELECT val FROM withtx_rb WHERE id = ?", 1)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -281,10 +281,10 @@ func TestWithTx_Rollback(t *testing.T) {
 }
 
 func TestWithTx_Panic(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 	ctx := context.Background()
 
-	_, err := m.Exec(ctx, "CREATE TABLE withtx_panic (id INTEGER PRIMARY KEY, val TEXT)")
+	_, err := s.Exec(ctx, "CREATE TABLE withtx_panic (id INTEGER PRIMARY KEY, val TEXT)")
 	if err != nil {
 		t.Fatalf("CREATE TABLE: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestWithTx_Panic(t *testing.T) {
 		}
 
 		// Verify the insert was rolled back.
-		rows, err := m.Query(ctx, "SELECT val FROM withtx_panic WHERE id = ?", 1)
+		rows, err := s.Query(ctx, "SELECT val FROM withtx_panic WHERE id = ?", 1)
 		if err != nil {
 			t.Fatalf("Query after panic: %v", err)
 		}
@@ -305,7 +305,7 @@ func TestWithTx_Panic(t *testing.T) {
 		}
 	}()
 
-	_ = m.WithTx(ctx, nil, func(tx *sql.Tx) error {
+	_ = s.WithTx(ctx, nil, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO withtx_panic (id, val) VALUES (?, ?)", 1, "panic-value")
 		if err != nil {
 			return err
@@ -315,25 +315,25 @@ func TestWithTx_Panic(t *testing.T) {
 }
 
 func TestWithTx_Closed(t *testing.T) {
-	m := newTestModule(t)
-	m.Close()
+	s := newTestService(t)
+	s.Close()
 
-	err := m.WithTx(context.Background(), nil, func(_ *sql.Tx) error {
+	err := s.WithTx(context.Background(), nil, func(_ *sql.Tx) error {
 		return nil
 	})
 	if err == nil {
-		t.Fatal("expected error when module is closed")
+		t.Fatal("expected error when service is closed")
 	}
 }
 
 func TestDBTX_Satisfied(t *testing.T) {
-	m := newTestModule(t)
+	s := newTestService(t)
 
 	// *sql.DB satisfies DBTX.
-	var _ database.DBTX = m.DB()
+	var _ database.DBTX = s.DB()
 
 	// *sql.Tx satisfies DBTX.
-	tx, err := m.BeginTx(context.Background(), nil)
+	tx, err := s.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
 	}

@@ -1,6 +1,6 @@
 # gas-database
 
-Database connection module for the [Gas](https://github.com/gasmod/gas) ecosystem. Wraps `database/sql` and native
+Database connection service for the [Gas](https://github.com/gasmod/gas) ecosystem. Wraps `database/sql` and native
 `pgxpool` to provide connection management, transaction helpers, and sqlc compatibility.
 
 ## Install
@@ -34,13 +34,14 @@ import (
 )
 
 func main() {
-	dbMod := database.New(database.WithConfig(&database.Config{
-		DatabaseDSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
-		DatabaseDriver: "pgx",
-	}))
-
 	app := gas.NewApp(
-		gas.WithModule(dbMod),
+		gas.WithService[*database.Service](
+			database.New(database.WithConfig(&database.Config{
+				DatabaseDSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+				DatabaseDriver: "pgx",
+			})),
+			gas.ServiceLifetimeSingleton,
+		),
 		// ...
 	)
 
@@ -51,14 +52,14 @@ func main() {
 ### Native pgx mode
 
 ```go
-dbMod := database.New(database.WithConfig(&database.Config{
+database.New(database.WithConfig(&database.Config{
 	DatabaseMode: database.ModePgx,
 	DatabaseDSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
 }))
 
 // After Init(), both are available:
-// dbMod.DB()   -> *sql.DB (via stdlib adapter)
-// dbMod.Pool() -> *pgxpool.Pool
+// svc.DB()   -> *sql.DB (via stdlib adapter)
+// svc.Pool() -> *pgxpool.Pool
 ```
 
 ### Using a connector (sql.OpenDB)
@@ -71,9 +72,7 @@ import "github.com/jackc/pgx/v5/stdlib"
 connConfig, _ := pgx.ParseConfig("postgres://user:pass@localhost:5432/mydb")
 connector := stdlib.GetConnector(*connConfig)
 
-dbMod := database.New(
-	database.WithConnector(connector),
-)
+database.New(database.WithConnector(connector))
 ```
 
 When a connector is provided, `DatabaseDriver` and `DatabaseDSN` are not required.
@@ -83,34 +82,33 @@ When a connector is provided, `DatabaseDriver` and `DatabaseDSN` are not require
 ```go
 import _ "modernc.org/sqlite"
 
-dbMod := database.New(database.WithConfig(database.Config{
+database.New(database.WithConfig(&database.Config{
 	DatabaseDriver: "sqlite",
 	DatabaseDSN:    "./app.db",
 }))
 ```
 
-### Passing to other modules
+### Dependency injection
 
-Modules receive the database through `gas.DatabaseProvider`:
-
-```go
-// In main.go
-authMod := auth.New(
-	auth.WithDatabaseProvider(dbMod), // Module implements gas.DatabaseProvider
-)
-```
-
-Inside a consuming module, use `DB()` for sqlc-generated queries:
+Services receive the database through `gas.DatabaseProvider` via constructor injection:
 
 ```go
-// gas-auth/module.go
-func (m *Module) Init() error {
-	m.queries = authdb.New(m.db.DB()) // sqlc database/sql mode
+// gas-auth/service.go
+type Service struct {
+	db gas.DatabaseProvider
+}
+
+func New(db gas.DatabaseProvider) *Service {
+	return &Service{db: db}
+}
+
+func (s *Service) Init() error {
+	s.queries = authdb.New(s.db.DB()) // sqlc database/sql mode
 	return nil
 }
 ```
 
-For modules that want native pgx access, define a local interface and type-assert:
+For services that want native pgx access, define a local interface and type-assert:
 
 ```go
 // gas-auth/providers.go
@@ -118,12 +116,12 @@ type PgxProvider interface {
 	Pool() *pgxpool.Pool
 }
 
-// gas-auth/module.go
-func (m *Module) Init() error {
-	if pp, ok := m.db.(PgxProvider); ok && pp.Pool() != nil {
-		m.queries = authdb.New(pp.Pool()) // sqlc pgx mode
+// gas-auth/service.go
+func (s *Service) Init() error {
+	if pp, ok := s.db.(PgxProvider); ok && pp.Pool() != nil {
+		s.queries = authdb.New(pp.Pool()) // sqlc pgx mode
 	} else {
-		m.queries = authdb.New(m.db.DB()) // fallback to database/sql
+		s.queries = authdb.New(s.db.DB()) // fallback to database/sql
 	}
 	return nil
 }
@@ -134,7 +132,7 @@ func (m *Module) Init() error {
 Manual transaction management:
 
 ```go
-tx, err := dbMod.BeginTx(ctx, nil)
+tx, err := dbSvc.BeginTx(ctx, nil)
 if err != nil {
 	return err
 }
@@ -145,7 +143,7 @@ err = tx.Commit()
 Automatic commit/rollback with `WithTx`:
 
 ```go
-err := dbMod.WithTx(ctx, nil, func(tx *sql.Tx) error {
+err := dbSvc.WithTx(ctx, nil, func(tx *sql.Tx) error {
 	qtx := queries.WithTx(tx)
 	if err := qtx.CreateUser(ctx, params); err != nil {
 		return err // triggers rollback
@@ -157,6 +155,9 @@ err := dbMod.WithTx(ctx, nil, func(tx *sql.Tx) error {
 `WithTx` also rolls back on panic.
 
 ## Config
+
+If `WithConfig` is not provided, the service automatically binds configuration from the `gas.ConfigProvider` injected
+via DI. This lets you drive database settings from environment variables or a config file without any explicit wiring.
 
 | Field                     | Default      | Description                                               |
 |---------------------------|--------------|-----------------------------------------------------------|

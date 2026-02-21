@@ -18,13 +18,13 @@ type DBTX interface {
 
 // BeginTx starts a new database transaction. The caller is responsible
 // for calling Commit or Rollback on the returned *sql.Tx.
-func (m *Module) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	if m.closed.Load() {
-		return nil, fmt.Errorf("%s: module is closed", m.Name())
+func (s *Service) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	if s.closed.Load() {
+		return nil, fmt.Errorf("%s: service is closed", s.Name())
 	}
-	tx, err := m.db.BeginTx(ctx, opts)
+	tx, err := s.db.BeginTx(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("%s: begin tx: %w", m.Name(), err)
+		return nil, fmt.Errorf("%s: begin tx: %w", s.Name(), err)
 	}
 	return tx, nil
 }
@@ -32,14 +32,14 @@ func (m *Module) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, err
 // WithTx executes fn within a transaction. If fn returns nil the
 // transaction is committed; otherwise it is rolled back. Any panic
 // inside fn also triggers a rollback.
-func (m *Module) WithTx(ctx context.Context, opts *sql.TxOptions, fn func(*sql.Tx) error) (err error) {
-	if m.closed.Load() {
-		return fmt.Errorf("%s: module is closed", m.Name())
+func (s *Service) WithTx(ctx context.Context, opts *sql.TxOptions, fn func(*sql.Tx) error) (err error) {
+	if s.closed.Load() {
+		return fmt.Errorf("%s: service is closed", s.Name())
 	}
 
-	tx, err := m.db.BeginTx(ctx, opts)
+	tx, err := s.db.BeginTx(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("%s: begin tx: %w", m.Name(), err)
+		return fmt.Errorf("%s: begin tx: %w", s.Name(), err)
 	}
 
 	defer func() {

@@ -7,31 +7,31 @@ import (
 	"github.com/gasmod/gas"
 )
 
-// Compile-time check: Module implements gas.DatabaseProvider.
-var _ gas.DatabaseProvider = (*Module)(nil)
+// Compile-time check: Service implements gas.DatabaseProvider.
+var _ gas.DatabaseProvider = (*Service)(nil)
 
 // Query executes a query that returns rows. The returned gas.Rows is
 // backed by *sql.Rows which natively satisfies the interface.
-func (m *Module) Query(ctx context.Context, query string, args ...any) (gas.Rows, error) {
-	if m.closed.Load() {
-		return nil, fmt.Errorf("%s: module is closed", m.Name())
+func (s *Service) Query(ctx context.Context, query string, args ...any) (gas.Rows, error) {
+	if s.closed.Load() {
+		return nil, fmt.Errorf("%s: service is closed", s.Name())
 	}
-	rows, err := m.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("%s: query: %w", m.Name(), err)
+		return nil, fmt.Errorf("%s: query: %w", s.Name(), err)
 	}
 	return rows, nil
 }
 
 // Exec executes a query that doesn't return rows. The returned
 // gas.Result is backed by sql.Result which natively satisfies the interface.
-func (m *Module) Exec(ctx context.Context, query string, args ...any) (gas.Result, error) {
-	if m.closed.Load() {
-		return nil, fmt.Errorf("%s: module is closed", m.Name())
+func (s *Service) Exec(ctx context.Context, query string, args ...any) (gas.Result, error) {
+	if s.closed.Load() {
+		return nil, fmt.Errorf("%s: service is closed", s.Name())
 	}
-	result, err := m.db.ExecContext(ctx, query, args...)
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("%s: exec: %w", m.Name(), err)
+		return nil, fmt.Errorf("%s: exec: %w", s.Name(), err)
 	}
 	return result, nil
 }
