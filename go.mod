@@ -3,8 +3,8 @@ module github.com/gasmod/gas-database
 go 1.25.6
 
 require (
-	github.com/gasmod/gas v0.1.10
-	github.com/gasmod/gas-config/examples/env v0.0.0-20260223043110-92c07a3d7687
+	github.com/gasmod/gas v0.1.11
+	github.com/gasmod/gas-config v0.1.4
 	github.com/jackc/pgx/v5 v5.8.0
 	modernc.org/sqlite v1.46.1
 )
@@ -12,7 +12,6 @@ require (
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gasmod/gas-config v0.1.3 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect

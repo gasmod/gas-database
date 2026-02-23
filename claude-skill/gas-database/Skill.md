@@ -106,10 +106,10 @@ type DBTX interface {
 
 ```go
 type Config struct {
-    Database DbConfig
+    Database Settings
 }
 
-type DbConfig struct {
+type Settings struct {
     Mode            string        // "sql" (default) or "pgx"
     Driver          string        // database/sql driver name, default "postgres" (ModeSQL only)
     DSN             string        // connection string (required unless WithConnector)
@@ -141,7 +141,7 @@ const (
 app := gas.NewApp(
     gas.WithService[*database.Service](
         database.New(database.WithConfig(&database.Config{
-            Database: database.DbConfig{
+            Database: database.Settings{
                 DSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
                 Driver: "pgx",
             },
@@ -155,7 +155,7 @@ app := gas.NewApp(
 
 ```go
 database.New(database.WithConfig(&database.Config{
-    Database: database.DbConfig{
+    Database: database.Settings{
         Mode: database.ModePgx,
         DSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
     },
@@ -169,7 +169,7 @@ database.New(database.WithConfig(&database.Config{
 import _ "modernc.org/sqlite"
 
 database.New(database.WithConfig(&database.Config{
-    Database: database.DbConfig{
+    Database: database.Settings{
         Driver: "sqlite",
         DSN:    "./app.db",
     },

@@ -44,15 +44,15 @@ const (
 type Config struct {
 	env.WithGasEnv
 
-	Database DbConfig
+	Database Settings
 
 	// hasConnector is set internally when a driver.Connector is provided.
 	// When true, Driver and DSN are not required in ModeSQL.
 	hasConnector bool
 }
 
-// DbConfig represents the configuration required to establish and manage database connections.
-type DbConfig struct {
+// Settings represents the configuration required to establish and manage database connections.
+type Settings struct {
 	// Mode selects the backend: ModeSQL (default) or ModePgx.
 	Mode string
 
@@ -80,7 +80,7 @@ type DbConfig struct {
 // DefaultConfig returns a Config with sensible defaults using database/sql.
 func DefaultConfig() *Config {
 	return &Config{
-		Database: DbConfig{
+		Database: Settings{
 			Mode:            defaultMode,
 			Driver:          defaultDriver,
 			MaxOpenConns:    defaultMaxOpenConns,

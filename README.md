@@ -37,7 +37,7 @@ func main() {
 	app := gas.NewApp(
 		gas.WithService[*database.Service](
 			database.New(database.WithConfig(&database.Config{
-				Database: database.DbConfig{
+				Database: database.Settings{
 					DSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
 					Driver: "pgx",
 				},
@@ -55,7 +55,7 @@ func main() {
 
 ```go
 database.New(database.WithConfig(&database.Config{
-	Database: database.DbConfig{
+	Database: database.Settings{
 		Mode: database.ModePgx,
 		DSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
 	},
@@ -87,7 +87,7 @@ When a connector is provided, `Database.Driver` and `Database.DSN` are not requi
 import _ "modernc.org/sqlite"
 
 database.New(database.WithConfig(&database.Config{
-	Database: database.DbConfig{
+	Database: database.Settings{
 		Driver: "sqlite",
 		DSN:    "./app.db",
 	},
