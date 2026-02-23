@@ -22,8 +22,8 @@ func newTestService(t *testing.T) *database.Service {
 	t.Helper()
 
 	cfg := database.DefaultConfig()
-	cfg.DatabaseDriver = "sqlite"
-	cfg.DatabaseDSN = filepath.Join(t.TempDir(), "test.db")
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "test.db")
 
 	s := database.New(database.WithConfig(cfg))(nil)
 	if err := s.Init(); err != nil {

@@ -89,7 +89,7 @@ func (s *Service) Init() error {
 		return err
 	}
 
-	switch s.cfg.DatabaseMode {
+	switch s.cfg.Database.Mode {
 	case ModePgx:
 		if err := s.initPgx(); err != nil {
 			return err
@@ -99,7 +99,7 @@ func (s *Service) Init() error {
 			return err
 		}
 	default:
-		return fmt.Errorf("%s: unknown mode %q", s.Name(), s.cfg.DatabaseMode)
+		return fmt.Errorf("%s: unknown mode %q", s.Name(), s.cfg.Database.Mode)
 	}
 
 	s.closed.Store(false)
@@ -112,16 +112,16 @@ func (s *Service) initSQL() error {
 		db = sql.OpenDB(s.connector)
 	} else {
 		var err error
-		db, err = sql.Open(s.cfg.DatabaseDriver, s.cfg.DatabaseDSN)
+		db, err = sql.Open(s.cfg.Database.Driver, s.cfg.Database.DSN)
 		if err != nil {
 			return fmt.Errorf("%s: open: %w", s.Name(), err)
 		}
 	}
 
-	db.SetMaxOpenConns(int(s.cfg.DatabaseMaxOpenConns))
-	db.SetMaxIdleConns(s.cfg.DatabaseMaxIdleConns)
-	db.SetConnMaxLifetime(s.cfg.DatabaseConnMaxLifetime)
-	db.SetConnMaxIdleTime(s.cfg.DatabaseConnMaxIdleTime)
+	db.SetMaxOpenConns(int(s.cfg.Database.MaxOpenConns))
+	db.SetMaxIdleConns(s.cfg.Database.MaxIdleConns)
+	db.SetConnMaxLifetime(s.cfg.Database.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(s.cfg.Database.ConnMaxIdleTime)
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPingTimeout)
 	defer cancel()
@@ -139,19 +139,19 @@ func (s *Service) initPgx() error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPingTimeout)
 	defer cancel()
 
-	poolCfg, err := pgxpool.ParseConfig(s.cfg.DatabaseDSN)
+	poolCfg, err := pgxpool.ParseConfig(s.cfg.Database.DSN)
 	if err != nil {
 		return fmt.Errorf("%s: parse pgx config: %w", s.Name(), err)
 	}
 
-	if s.cfg.DatabaseMaxOpenConns > 0 {
-		poolCfg.MaxConns = s.cfg.DatabaseMaxOpenConns
+	if s.cfg.Database.MaxOpenConns > 0 {
+		poolCfg.MaxConns = s.cfg.Database.MaxOpenConns
 	}
-	if s.cfg.DatabaseConnMaxLifetime > 0 {
-		poolCfg.MaxConnLifetime = s.cfg.DatabaseConnMaxLifetime
+	if s.cfg.Database.ConnMaxLifetime > 0 {
+		poolCfg.MaxConnLifetime = s.cfg.Database.ConnMaxLifetime
 	}
-	if s.cfg.DatabaseConnMaxIdleTime > 0 {
-		poolCfg.MaxConnIdleTime = s.cfg.DatabaseConnMaxIdleTime
+	if s.cfg.Database.ConnMaxIdleTime > 0 {
+		poolCfg.MaxConnIdleTime = s.cfg.Database.ConnMaxIdleTime
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)

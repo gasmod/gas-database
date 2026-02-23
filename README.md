@@ -37,8 +37,10 @@ func main() {
 	app := gas.NewApp(
 		gas.WithService[*database.Service](
 			database.New(database.WithConfig(&database.Config{
-				DatabaseDSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
-				DatabaseDriver: "pgx",
+				Database: database.DbConfig{
+					DSN:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+					Driver: "pgx",
+				},
 			})),
 			gas.ServiceLifetimeSingleton,
 		),
@@ -53,8 +55,10 @@ func main() {
 
 ```go
 database.New(database.WithConfig(&database.Config{
-	DatabaseMode: database.ModePgx,
-	DatabaseDSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+	Database: database.DbConfig{
+		Mode: database.ModePgx,
+		DSN:  "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+	},
 }))
 
 // After Init(), both are available:
@@ -75,7 +79,7 @@ connector := stdlib.GetConnector(*connConfig)
 database.New(database.WithConnector(connector))
 ```
 
-When a connector is provided, `DatabaseDriver` and `DatabaseDSN` are not required.
+When a connector is provided, `Database.Driver` and `Database.DSN` are not required.
 
 ### SQLite
 
@@ -83,8 +87,10 @@ When a connector is provided, `DatabaseDriver` and `DatabaseDSN` are not require
 import _ "modernc.org/sqlite"
 
 database.New(database.WithConfig(&database.Config{
-	DatabaseDriver: "sqlite",
-	DatabaseDSN:    "./app.db",
+	Database: database.DbConfig{
+		Driver: "sqlite",
+		DSN:    "./app.db",
+	},
 }))
 ```
 
@@ -159,15 +165,15 @@ err := dbSvc.WithTx(ctx, nil, func(tx *sql.Tx) error {
 If `WithConfig` is not provided, the service automatically binds configuration from the `gas.ConfigProvider` injected
 via DI. This lets you drive database settings from environment variables or a config file without any explicit wiring.
 
-| Field                     | Default      | Description                                               |
-|---------------------------|--------------|-----------------------------------------------------------|
-| `DatabaseMode`            | `"sql"`      | Backend mode: `"sql"` or `"pgx"`                          |
-| `DatabaseDriver`          | `"postgres"` | `database/sql` driver name (ModeSQL only)                 |
-| `DatabaseDSN`             |              | Connection string (required unless using `WithConnector`) |
-| `DatabaseMaxOpenConns`    | `25`         | Max open connections                                      |
-| `DatabaseMaxIdleConns`    | `5`          | Max idle connections (ModeSQL only)                       |
-| `DatabaseConnMaxLifetime` | `30m`        | Max connection reuse time                                 |
-| `DatabaseConnMaxIdleTime` | `5m`         | Max connection idle time                                  |
+| Field                        | Default      | Description                                               |
+|------------------------------|--------------|-----------------------------------------------------------|
+| `Database.Mode`              | `"sql"`      | Backend mode: `"sql"` or `"pgx"`                          |
+| `Database.Driver`            | `"postgres"` | `database/sql` driver name (ModeSQL only)                 |
+| `Database.DSN`               |              | Connection string (required unless using `WithConnector`) |
+| `Database.MaxOpenConns`      | `25`         | Max open connections                                      |
+| `Database.MaxIdleConns`      | `5`          | Max idle connections (ModeSQL only)                       |
+| `Database.ConnMaxLifetime`   | `30m`        | Max connection reuse time                                 |
+| `Database.ConnMaxIdleTime`   | `5m`         | Max connection idle time                                  |
 
 ## DBTX Interface
 

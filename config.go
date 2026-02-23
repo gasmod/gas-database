@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	env "github.com/gasmod/gas-config/extensions/gas-env"
 )
 
 // Mode selects the database backend.
@@ -40,43 +42,52 @@ const (
 
 // Config holds database connection settings.
 type Config struct {
+	env.WithGasEnv
+
+	Database DbConfig
+
+	// hasConnector is set internally when a driver.Connector is provided.
+	// When true, Driver and DSN are not required in ModeSQL.
+	hasConnector bool
+}
+
+// DbConfig represents the configuration required to establish and manage database connections.
+type DbConfig struct {
 	// Mode selects the backend: ModeSQL (default) or ModePgx.
-	DatabaseMode string
+	Mode string
 
 	// Driver is the database/sql driver name (e.g., "postgres", "pgx", "sqlite").
 	// Only used in ModeSQL.
-	DatabaseDriver string
+	Driver string
 
 	// DSN is the data source name (connection string).
-	DatabaseDSN string
+	DSN string
 
 	// MaxOpenConns is the maximum number of open connections to the database.
-	DatabaseMaxOpenConns int32
-
-	// hasConnector is set internally when a driver.Connector is provided.
-	// When true, DatabaseDriver and DatabaseDSN are not required in ModeSQL.
-	hasConnector bool
+	MaxOpenConns int32
 
 	// MaxIdleConns is the maximum number of idle connections in the pool.
 	// Only used in ModeSQL; pgx manages idle connections internally.
-	DatabaseMaxIdleConns int
+	MaxIdleConns int
 
 	// ConnMaxLifetime is the maximum amount of time a connection may be reused.
-	DatabaseConnMaxLifetime time.Duration
+	ConnMaxLifetime time.Duration
 
 	// ConnMaxIdleTime is the maximum amount of time a connection may be idle.
-	DatabaseConnMaxIdleTime time.Duration
+	ConnMaxIdleTime time.Duration
 }
 
 // DefaultConfig returns a Config with sensible defaults using database/sql.
 func DefaultConfig() *Config {
 	return &Config{
-		DatabaseMode:            defaultMode,
-		DatabaseDriver:          defaultDriver,
-		DatabaseMaxOpenConns:    defaultMaxOpenConns,
-		DatabaseMaxIdleConns:    defaultMaxIdleConns,
-		DatabaseConnMaxLifetime: defaultConnMaxLifetime,
-		DatabaseConnMaxIdleTime: defaultConnMaxIdleTime,
+		Database: DbConfig{
+			Mode:            defaultMode,
+			Driver:          defaultDriver,
+			MaxOpenConns:    defaultMaxOpenConns,
+			MaxIdleConns:    defaultMaxIdleConns,
+			ConnMaxLifetime: defaultConnMaxLifetime,
+			ConnMaxIdleTime: defaultConnMaxIdleTime,
+		},
 	}
 }
 
@@ -100,34 +111,34 @@ const (
 // Validate checks the Config struct for correctness and returns an error if any validation rule is violated.
 // nolint:cyclop,gocyclo // intentionally complex
 func (c *Config) Validate() error {
-	if !validModes[c.DatabaseMode] {
-		return fmt.Errorf("DatabaseMode must be one of [%s, %s], got %q", ModeSQL, ModePgx, c.DatabaseMode)
+	if !validModes[c.Database.Mode] {
+		return fmt.Errorf("Database.Mode must be one of [%s, %s], got %q", ModeSQL, ModePgx, c.Database.Mode)
 	}
-	if c.DatabaseMode == ModeSQL && !c.hasConnector && !validDrivers[c.DatabaseDriver] {
-		return fmt.Errorf("DatabaseDriver must be one of [%s, %s, %s], got %q", DriverPostgres, DriverPgx, DriverSQLite, c.DatabaseDriver)
+	if c.Database.Mode == ModeSQL && !c.hasConnector && !validDrivers[c.Database.Driver] {
+		return fmt.Errorf("Database.Driver must be one of [%s, %s, %s], got %q", DriverPostgres, DriverPgx, DriverSQLite, c.Database.Driver)
 	}
-	if c.DatabaseDSN == "" && !c.hasConnector {
-		return errors.New("DatabaseDSN must not be empty")
+	if c.Database.DSN == "" && !c.hasConnector {
+		return errors.New("Database.DSN must not be empty")
 	}
-	if c.DatabaseMaxOpenConns < minMaxOpenConns || c.DatabaseMaxOpenConns > maxMaxOpenConns {
-		return fmt.Errorf("DatabaseMaxOpenConns must be between %d and %d, got %d", minMaxOpenConns, maxMaxOpenConns, c.DatabaseMaxOpenConns)
+	if c.Database.MaxOpenConns < minMaxOpenConns || c.Database.MaxOpenConns > maxMaxOpenConns {
+		return fmt.Errorf("Database.MaxOpenConns must be between %d and %d, got %d", minMaxOpenConns, maxMaxOpenConns, c.Database.MaxOpenConns)
 	}
-	if c.DatabaseMode == ModeSQL {
-		if c.DatabaseMaxIdleConns < minMaxIdleConns || c.DatabaseMaxIdleConns > maxMaxIdleConns {
-			return fmt.Errorf("DatabaseMaxIdleConns must be between %d and %d, got %d", minMaxIdleConns, maxMaxIdleConns, c.DatabaseMaxIdleConns)
+	if c.Database.Mode == ModeSQL {
+		if c.Database.MaxIdleConns < minMaxIdleConns || c.Database.MaxIdleConns > maxMaxIdleConns {
+			return fmt.Errorf("Database.MaxIdleConns must be between %d and %d, got %d", minMaxIdleConns, maxMaxIdleConns, c.Database.MaxIdleConns)
 		}
-		if c.DatabaseMaxIdleConns > int(c.DatabaseMaxOpenConns) {
-			return fmt.Errorf("DatabaseMaxIdleConns (%d) must not exceed DatabaseMaxOpenConns (%d)", c.DatabaseMaxIdleConns, c.DatabaseMaxOpenConns)
+		if c.Database.MaxIdleConns > int(c.Database.MaxOpenConns) {
+			return fmt.Errorf("Database.MaxIdleConns (%d) must not exceed Database.MaxOpenConns (%d)", c.Database.MaxIdleConns, c.Database.MaxOpenConns)
 		}
 	}
-	if c.DatabaseConnMaxLifetime < minConnMaxLifetime || c.DatabaseConnMaxLifetime > maxConnMaxLifetime {
-		return fmt.Errorf("DatabaseConnMaxLifetime must be between %s and %s, got %s", minConnMaxLifetime, maxConnMaxLifetime, c.DatabaseConnMaxLifetime)
+	if c.Database.ConnMaxLifetime < minConnMaxLifetime || c.Database.ConnMaxLifetime > maxConnMaxLifetime {
+		return fmt.Errorf("Database.ConnMaxLifetime must be between %s and %s, got %s", minConnMaxLifetime, maxConnMaxLifetime, c.Database.ConnMaxLifetime)
 	}
-	if c.DatabaseConnMaxIdleTime < minConnMaxIdleTime || c.DatabaseConnMaxIdleTime > maxConnMaxIdleTime {
-		return fmt.Errorf("DatabaseConnMaxIdleTime must be between %s and %s, got %s", minConnMaxIdleTime, maxConnMaxIdleTime, c.DatabaseConnMaxIdleTime)
+	if c.Database.ConnMaxIdleTime < minConnMaxIdleTime || c.Database.ConnMaxIdleTime > maxConnMaxIdleTime {
+		return fmt.Errorf("Database.ConnMaxIdleTime must be between %s and %s, got %s", minConnMaxIdleTime, maxConnMaxIdleTime, c.Database.ConnMaxIdleTime)
 	}
-	if c.DatabaseConnMaxIdleTime > c.DatabaseConnMaxLifetime {
-		return fmt.Errorf("DatabaseConnMaxIdleTime (%s) must not exceed DatabaseConnMaxLifetime (%s)", c.DatabaseConnMaxIdleTime, c.DatabaseConnMaxLifetime)
+	if c.Database.ConnMaxIdleTime > c.Database.ConnMaxLifetime {
+		return fmt.Errorf("Database.ConnMaxIdleTime (%s) must not exceed Database.ConnMaxLifetime (%s)", c.Database.ConnMaxIdleTime, c.Database.ConnMaxLifetime)
 	}
 	return nil
 }
