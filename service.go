@@ -31,6 +31,9 @@ type Service struct {
 	closed               atomic.Bool
 }
 
+var _ gas.Service = (*Service)(nil)
+var _ gas.DatabaseProvider = (*Service)(nil)
+
 // Option configures a Service.
 type Option func(*Service)
 
