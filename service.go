@@ -219,3 +219,11 @@ func (s *Service) Ping(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Driver returns the database driver name based on the configured mode and settings.
+func (s *Service) Driver() string {
+	if s.cfg.Database.Mode == ModePgx {
+		return DriverPgx
+	}
+	return s.cfg.Database.Driver
+}
