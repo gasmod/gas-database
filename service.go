@@ -27,6 +27,7 @@ type Service struct {
 	connector            driver.Connector
 	cfg                  *Config
 	cfgProvider          gas.ConfigProvider
+	logger               gas.Logger
 	customConfigProvided bool
 	closed               atomic.Bool
 }
@@ -56,11 +57,12 @@ func WithConnector(c driver.Connector) Option {
 
 // New captures options and returns a DI-injectable constructor.
 // The returned func receives gas.ConfigProvider from the DI container.
-func New(opts ...Option) func(gas.ConfigProvider) *Service {
-	return func(cfgProvider gas.ConfigProvider) *Service {
+func New(opts ...Option) func(gas.ConfigProvider, gas.Logger) *Service {
+	return func(cfgProvider gas.ConfigProvider, logger gas.Logger) *Service {
 		s := &Service{
 			cfg:         DefaultConfig(),
 			cfgProvider: cfgProvider,
+			logger:      logger.With().Str("service", serviceName).Logger(),
 		}
 		for _, opt := range opts {
 			opt(s)
@@ -89,19 +91,23 @@ func (s *Service) Init() error {
 	s.cfg.hasConnector = s.connector != nil
 
 	if err := s.cfg.Validate(); err != nil {
+		s.logger.Error("invalid database configuration").Err("error", err).Send()
 		return err
 	}
 
 	switch s.cfg.Database.Mode {
 	case ModePgx:
 		if err := s.initPgx(); err != nil {
+			s.logger.Error("failed to initialize pgx pool").Err("error", err).Send()
 			return err
 		}
 	case ModeSQL, "":
 		if err := s.initSQL(); err != nil {
+			s.logger.Error("failed to initialize SQL pool").Err("error", err).Send()
 			return err
 		}
 	default:
+		s.logger.Error("unknown database mode").Str("mode", s.cfg.Database.Mode).Send()
 		return fmt.Errorf("%s: unknown mode %q", s.Name(), s.cfg.Database.Mode)
 	}
 
@@ -117,6 +123,7 @@ func (s *Service) initSQL() error {
 		var err error
 		db, err = sql.Open(s.cfg.Database.Driver, s.cfg.Database.DSN)
 		if err != nil {
+			s.logger.Error("failed to open database connection").Err("error", err).Send()
 			return fmt.Errorf("%s: open: %w", s.Name(), err)
 		}
 	}
@@ -131,8 +138,11 @@ func (s *Service) initSQL() error {
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
+		s.logger.Error("failed to ping database connection").Err("error", err).Send()
 		return fmt.Errorf("%s: ping: %w", s.Name(), err)
 	}
+
+	s.logger.Info("SQL database connection initialized").Send()
 
 	s.db = db
 	return nil
@@ -144,6 +154,7 @@ func (s *Service) initPgx() error {
 
 	poolCfg, err := pgxpool.ParseConfig(s.cfg.Database.DSN)
 	if err != nil {
+		s.logger.Error("failed to parse pgx config").Err("error", err).Send()
 		return fmt.Errorf("%s: parse pgx config: %w", s.Name(), err)
 	}
 
@@ -159,13 +170,17 @@ func (s *Service) initPgx() error {
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
+		s.logger.Error("failed to create pgx pool").Err("error", err).Send()
 		return fmt.Errorf("%s: pgxpool: %w", s.Name(), err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	if pErr := pool.Ping(ctx); pErr != nil {
 		pool.Close()
-		return fmt.Errorf("%s: ping: %w", s.Name(), err)
+		s.logger.Error("failed to ping pgx pool").Err("error", pErr).Send()
+		return fmt.Errorf("%s: ping: %w", s.Name(), pErr)
 	}
+
+	s.logger.Info("PGX database connection initialized").Send()
 
 	s.pool = pool
 	s.db = stdlib.OpenDBFromPool(pool)
@@ -178,12 +193,17 @@ func (s *Service) Close() error {
 
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
+			s.logger.Error("failed to close database connection").Err("error", err).Send()
 			return fmt.Errorf("%s: close: %w", s.Name(), err)
 		}
+
+		s.logger.Info("database connection closed").Send()
 	}
 
 	if s.pool != nil {
 		s.pool.Close()
+
+		s.logger.Info("pgx pool closed").Send()
 	}
 
 	return nil
