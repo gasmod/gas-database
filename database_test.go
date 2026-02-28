@@ -25,7 +25,7 @@ func newTestService(t *testing.T) *database.Service {
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "test.db")
 
-	s := database.New(database.WithConfig(cfg))(nil)
+	s := database.New(database.WithConfig(cfg))(nil, gas.NewNopLogger()())
 	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -34,14 +34,14 @@ func newTestService(t *testing.T) *database.Service {
 }
 
 func TestName(t *testing.T) {
-	s := database.New()(nil)
+	s := database.New()(nil, gas.NewNopLogger()())
 	if s.Name() != "gas-database" {
 		t.Fatalf("expected gas-database, got %s", s.Name())
 	}
 }
 
 func TestInit_NoDSN(t *testing.T) {
-	s := database.New()(nil)
+	s := database.New()(nil, gas.NewNopLogger()())
 	if err := s.Init(); err == nil {
 		t.Fatal("expected error for missing DSN")
 	}
@@ -73,7 +73,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestPing_NotInitialized(t *testing.T) {
-	s := database.New()(nil)
+	s := database.New()(nil, gas.NewNopLogger()())
 	if err := s.Ping(context.Background()); err == nil {
 		t.Fatal("expected error for uninitialized service")
 	}
