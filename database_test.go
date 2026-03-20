@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gasmod/gas"
 	database "github.com/gasmod/gas-database"
@@ -323,6 +324,38 @@ func TestWithTx_Closed(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when service is closed")
+	}
+}
+
+func TestInit_RetrySuccess(t *testing.T) {
+	cfg := database.DefaultConfig()
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "retry-test.db")
+	cfg.Database.ConnRetries = 3
+	cfg.Database.ConnRetryInterval = 1 * time.Millisecond
+
+	s := database.New(database.WithConfig(cfg))(nil, gas.NewNopLogger()())
+	if err := s.Init(); err != nil {
+		t.Fatalf("Init with retries enabled should succeed: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	if s.DB() == nil {
+		t.Fatal("DB() should not be nil")
+	}
+}
+
+func TestInit_RetryExhausted(t *testing.T) {
+	cfg := database.DefaultConfig()
+	cfg.Database.Mode = "pgx"
+	cfg.Database.DSN = "postgres://invalid:invalid@localhost:1/nonexistent"
+	cfg.Database.ConnRetries = 2
+	cfg.Database.ConnRetryInterval = 1 * time.Millisecond
+
+	s := database.New(database.WithConfig(cfg))(nil, gas.NewNopLogger()())
+	err := s.Init()
+	if err == nil {
+		t.Fatal("expected error after exhausting retries")
 	}
 }
 

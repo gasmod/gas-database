@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/gasmod/gas"
 
@@ -95,24 +96,63 @@ func (s *Service) Init() error {
 		return err
 	}
 
+	var initFn func() error
 	switch s.cfg.Database.Mode {
 	case ModePgx:
-		if err := s.initPgx(); err != nil {
-			s.logger.Error("failed to initialize pgx pool").Err("error", err).Send()
-			return err
-		}
+		initFn = s.initPgx
 	case ModeSQL, "":
-		if err := s.initSQL(); err != nil {
-			s.logger.Error("failed to initialize SQL pool").Err("error", err).Send()
-			return err
-		}
+		initFn = s.initSQL
 	default:
 		s.logger.Error("unknown database mode").Str("mode", s.cfg.Database.Mode).Send()
 		return fmt.Errorf("%s: unknown mode %q", s.Name(), s.cfg.Database.Mode)
 	}
 
+	if err := s.connectWithRetry(initFn); err != nil {
+		return err
+	}
+
 	s.closed.Store(false)
 	return nil
+}
+
+func (s *Service) connectWithRetry(initFn func() error) error {
+	err := initFn()
+	if err == nil {
+		return nil
+	}
+
+	maxRetries := s.cfg.Database.ConnRetries
+	if maxRetries <= 0 {
+		return err
+	}
+
+	interval := s.cfg.Database.ConnRetryInterval
+	if interval <= 0 {
+		interval = defaultConnRetryInterval
+	}
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		s.logger.Warn("database connection failed, retrying").
+			Err("error", err).
+			Int("attempt", attempt).
+			Int("max_retries", maxRetries).
+			Str("next_retry_in", interval.String()).
+			Send()
+
+		time.Sleep(interval)
+		interval *= 2
+
+		err = initFn()
+		if err == nil {
+			return nil
+		}
+	}
+
+	s.logger.Error("database connection failed after all retries").
+		Err("error", err).
+		Int("retries", maxRetries).
+		Send()
+	return fmt.Errorf("%s: connect failed after %d retries: %w", s.Name(), maxRetries, err)
 }
 
 func (s *Service) initSQL() error {

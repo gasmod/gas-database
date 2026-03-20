@@ -31,13 +31,15 @@ const (
 )
 
 const (
-	defaultMode            = ModeSQL
-	defaultDriver          = "postgres"
-	defaultMaxOpenConns    = 25
-	defaultMaxIdleConns    = 5
-	defaultConnMaxLifetime = 30 * time.Minute
-	defaultConnMaxIdleTime = 5 * time.Minute
-	defaultPingTimeout     = 5 * time.Second
+	defaultMode              = ModeSQL
+	defaultDriver            = "postgres"
+	defaultMaxOpenConns      = 25
+	defaultMaxIdleConns      = 5
+	defaultConnMaxLifetime   = 30 * time.Minute
+	defaultConnMaxIdleTime   = 5 * time.Minute
+	defaultPingTimeout       = 5 * time.Second
+	defaultConnRetries       = 0
+	defaultConnRetryInterval = 2 * time.Second
 )
 
 // Config holds database connection settings.
@@ -75,18 +77,28 @@ type Settings struct {
 
 	// ConnMaxIdleTime is the maximum amount of time a connection may be idle.
 	ConnMaxIdleTime time.Duration
+
+	// ConnRetries is the number of times to retry connecting to the database
+	// on failure. 0 means no retries (fail immediately).
+	ConnRetries int
+
+	// ConnRetryInterval is the base interval between connection retry attempts.
+	// The interval doubles after each failed attempt (exponential backoff).
+	ConnRetryInterval time.Duration
 }
 
 // DefaultConfig returns a Config with sensible defaults using database/sql.
 func DefaultConfig() *Config {
 	return &Config{
 		Database: Settings{
-			Mode:            defaultMode,
-			Driver:          defaultDriver,
-			MaxOpenConns:    defaultMaxOpenConns,
-			MaxIdleConns:    defaultMaxIdleConns,
-			ConnMaxLifetime: defaultConnMaxLifetime,
-			ConnMaxIdleTime: defaultConnMaxIdleTime,
+			Mode:              defaultMode,
+			Driver:            defaultDriver,
+			MaxOpenConns:      defaultMaxOpenConns,
+			MaxIdleConns:      defaultMaxIdleConns,
+			ConnMaxLifetime:   defaultConnMaxLifetime,
+			ConnMaxIdleTime:   defaultConnMaxIdleTime,
+			ConnRetries:       defaultConnRetries,
+			ConnRetryInterval: defaultConnRetryInterval,
 		},
 	}
 }
