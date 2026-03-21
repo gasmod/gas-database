@@ -8,7 +8,10 @@ description: >
   sqlc integration, or PostgreSQL/SQLite connectivity. Covers ModeSQL and
   ModePgx backends, DI wiring via gas.DatabaseProvider, transaction helpers
   (BeginTx, WithTx), pgxpool native access, connector injection, DBTX
-  interface, and configuration binding.
+  interface, connection retry with exponential backoff, and configuration
+  binding. Make sure to use this skill whenever working with database
+  connections in the Gas ecosystem, even if the user doesn't explicitly
+  mention gas-database.
 ---
 
 # Gas Database Package Reference
@@ -21,12 +24,12 @@ sqlc compatibility.
 import database "github.com/gasmod/gas-database"
 ```
 
-## Modes
+## Choosing a Mode
 
 | Mode                                  | Backend        | Use case                                                          |
 |---------------------------------------|----------------|-------------------------------------------------------------------|
 | `database.ModeSQL` (`"sql"`, default) | `database/sql` | Any driver: PostgreSQL, SQLite, MySQL                             |
-| `database.ModePgx` (`"pgx"`)          | `pgxpool.Pool` | Native pgx for PostgreSQL (better perf, pgx types, batch queries) |
+| `database.ModePgx` (`"pgx"`)         | `pgxpool.Pool` | Native pgx for PostgreSQL (better perf, pgx types, batch queries) |
 
 In both modes, `DB()` returns `*sql.DB` so sqlc `database/sql` mode always
 works. In pgx mode, `Pool()` additionally returns `*pgxpool.Pool` for sqlc pgx
@@ -35,27 +38,23 @@ mode.
 ## Constructor
 
 ```go
-func New(opts ...Option) func(gas.ConfigProvider) *Service
+func New(opts ...Option) func(gas.ConfigProvider, gas.Logger) *Service
 ```
 
 `New` captures options and returns a DI-injectable constructor. The returned
-func receives `gas.ConfigProvider` from the DI container.
+func receives `gas.ConfigProvider` and `gas.Logger` from the DI container.
 
 ### Options
 
-```go
-func WithConfig(cfg *Config) Option
-func WithConnector(c driver.Connector) Option
-```
+| Option                              | Description                                                                 |
+|-------------------------------------|-----------------------------------------------------------------------------|
+| `WithConfig(cfg *Config)`           | Set database configuration explicitly (skips config binding from DI)        |
+| `WithConnector(c driver.Connector)` | Provide a `driver.Connector` for ModeSQL; uses `sql.OpenDB(connector)`      |
 
-- `WithConfig` — set database configuration explicitly.
-- `WithConnector` — provide a `driver.Connector` for ModeSQL. Uses
-  `sql.OpenDB(connector)` instead of `sql.Open(driver, dsn)`.
-  `Database.Driver` and `Database.DSN` are not required when a connector is set.
-
-If `WithConfig` is not provided, the service automatically binds configuration
-from the `gas.ConfigProvider` injected via DI, so database settings can be
-driven from environment variables or a config file without explicit wiring.
+- `WithConnector` — `Database.Driver` and `Database.DSN` are not required when
+  a connector is set.
+- If `WithConfig` is not provided, the service automatically binds
+  configuration from the `gas.ConfigProvider` injected via DI.
 
 ## Service
 
@@ -63,21 +62,24 @@ driven from environment variables or a config file without explicit wiring.
 
 ### Lifecycle (gas.Service)
 
-```go
-func (s *Service) Name() string   // "gas-database"
-func (s *Service) Init() error    // opens connection, configures pool, pings
-func (s *Service) Close() error   // closes underlying connections
-```
+| Method    | Signature        | Description                              |
+|-----------|------------------|------------------------------------------|
+| `Name`    | `() string`      | Returns `"gas-database"`                 |
+| `Init`    | `() error`       | Opens connection, configures pool, pings |
+| `Close`   | `() error`       | Closes underlying connections            |
 
-### Database access
+### Database Access
 
-```go
-func (s *Service) DB() *sql.DB                                              // always works, both modes
-func (s *Service) Pool() *pgxpool.Pool                                      // nil in ModeSQL
-func (s *Service) Query(ctx, query, args...) (gas.Rows, error)              // gas.DatabaseProvider
-func (s *Service) Exec(ctx, query, args...) (gas.Result, error)             // gas.DatabaseProvider
-func (s *Service) Ping(ctx context.Context) error                           // verify connectivity
-```
+| Method   | Signature                                                    | Description                                 |
+|----------|--------------------------------------------------------------|---------------------------------------------|
+| `DB`     | `() *sql.DB`                                                 | Always works in both modes                  |
+| `Pool`   | `() *pgxpool.Pool`                                           | Native pool; nil in ModeSQL                 |
+| `Query`  | `(ctx, query string, args ...any) (gas.Rows, error)`        | Implements `gas.DatabaseProvider`           |
+| `Exec`   | `(ctx, query string, args ...any) (gas.Result, error)`      | Implements `gas.DatabaseProvider`           |
+| `Ping`   | `(ctx context.Context) error`                                | Verify connectivity                         |
+| `Driver` | `() string`                                                  | Returns driver name based on mode/settings  |
+
+`Query` and `Exec` return an error if the service has been closed.
 
 ### Transactions
 
@@ -110,18 +112,27 @@ type Config struct {
 }
 
 type Settings struct {
-    Mode            string        // "sql" (default) or "pgx"
-    Driver          string        // database/sql driver name, default "postgres" (ModeSQL only)
-    DSN             string        // connection string (required unless WithConnector)
-    MaxOpenConns    int32         // default 25
-    MaxIdleConns    int           // default 5 (ModeSQL only, pgx manages internally)
-    ConnMaxLifetime time.Duration // default 30m
-    ConnMaxIdleTime time.Duration // default 5m
+    Mode              string        // "sql" (default) or "pgx"
+    Driver            string        // database/sql driver name, default "postgres" (ModeSQL only)
+    DSN               string        // connection string (required unless WithConnector)
+    MaxOpenConns      int32         // default 25
+    MaxIdleConns      int           // default 5 (ModeSQL only, pgx manages internally)
+    ConnMaxLifetime   time.Duration // default 30m
+    ConnMaxIdleTime   time.Duration // default 5m
+    ConnRetries       int           // default 0 (no retries); number of retry attempts on connect failure
+    ConnRetryInterval time.Duration // default 2s; base interval, doubles each attempt (exponential backoff)
 }
 
 func DefaultConfig() *Config
 func (c *Config) Validate() error
 ```
+
+### Connection Retry
+
+When `ConnRetries > 0`, the service retries the initial connection with
+exponential backoff. The interval starts at `ConnRetryInterval` (default 2s)
+and doubles after each failed attempt. If all retries are exhausted, `Init`
+returns an error.
 
 ## Driver Constants
 
@@ -186,6 +197,18 @@ connector := stdlib.GetConnector(*connConfig)
 database.New(database.WithConnector(connector))
 ```
 
+### With connection retry
+
+```go
+database.New(database.WithConfig(&database.Config{
+    Database: database.Settings{
+        DSN:               "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+        ConnRetries:       3,                // retry up to 3 times
+        ConnRetryInterval: 2 * time.Second,  // 2s, 4s, 8s backoff
+    },
+}))
+```
+
 ### Consuming via gas.DatabaseProvider
 
 Services receive the database through the provider interface, never importing
@@ -241,4 +264,43 @@ dbSvc.WithTx(ctx, nil, func(tx *sql.Tx) error {
     }
     return qtx.CreateProfile(ctx, params) // commit if nil
 })
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "time"
+
+    _ "github.com/jackc/pgx/v5/stdlib"
+
+    "github.com/gasmod/gas"
+    database "github.com/gasmod/gas-database"
+)
+
+func main() {
+    app := gas.NewApp(
+        // Register database as a singleton service
+        gas.WithService[*database.Service](
+            database.New(database.WithConfig(&database.Config{
+                Database: database.Settings{
+                    DSN:               "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+                    Driver:            "pgx",
+                    MaxOpenConns:      25,
+                    MaxIdleConns:      5,
+                    ConnMaxLifetime:   30 * time.Minute,
+                    ConnMaxIdleTime:   5 * time.Minute,
+                    ConnRetries:       3,               // retry on startup failure
+                    ConnRetryInterval: 2 * time.Second, // exponential backoff: 2s, 4s, 8s
+                },
+            })),
+            gas.ServiceLifetimeSingleton, // shared across all services
+        ),
+        // Other services receive *database.Service as gas.DatabaseProvider via DI
+    )
+
+    app.Run()
+}
 ```

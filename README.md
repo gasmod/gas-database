@@ -174,6 +174,8 @@ via DI. This lets you drive database settings from environment variables or a co
 | `Database.MaxIdleConns`      | `5`          | Max idle connections (ModeSQL only)                       |
 | `Database.ConnMaxLifetime`   | `30m`        | Max connection reuse time                                 |
 | `Database.ConnMaxIdleTime`   | `5m`         | Max connection idle time                                  |
+| `Database.ConnRetries`       | `0`          | Number of connection retry attempts (0 = no retries)      |
+| `Database.ConnRetryInterval` | `2s`         | Base retry interval; doubles each attempt (exp. backoff)  |
 
 ## DBTX Interface
 
