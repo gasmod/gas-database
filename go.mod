@@ -3,7 +3,7 @@ module github.com/gasmod/gas-database
 go 1.25.6
 
 require (
-	github.com/gasmod/gas v0.2.16
+	github.com/gasmod/gas v0.2.17
 	github.com/gasmod/gas-config v0.2.1
 	github.com/jackc/pgx/v5 v5.9.1
 	modernc.org/sqlite v1.47.0
