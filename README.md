@@ -160,6 +160,17 @@ err := dbSvc.WithTx(ctx, nil, func(tx *sql.Tx) error {
 
 `WithTx` also rolls back on panic.
 
+## Health and readiness probes
+
+`Service` implements `gas.HealthReporter` and `gas.ReadyReporter`, auto-discovered
+by gas core:
+
+- `CheckHealth` (liveness) — fails only when the service is uninitialized or
+  closed. It does not ping the database, because `database/sql` and `pgxpool`
+  both auto-reconnect; a transient outage should not trigger a pod restart.
+- `CheckReady` (readiness) — pings the database. A failure signals that traffic
+  should drain off this instance until the dependency recovers.
+
 ## Config
 
 If `WithConfig` is not provided, the service automatically binds configuration from the `gas.ConfigProvider` injected

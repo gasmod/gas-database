@@ -17,6 +17,8 @@ import (
 var (
 	_ gas.Service          = (*database.Service)(nil)
 	_ gas.DatabaseProvider = (*database.Service)(nil)
+	_ gas.HealthReporter   = (*database.Service)(nil)
+	_ gas.ReadyReporter    = (*database.Service)(nil)
 )
 
 func newTestService(t *testing.T) *database.Service {
@@ -324,6 +326,38 @@ func TestWithTx_Closed(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when service is closed")
+	}
+}
+
+func TestCheckHealth(t *testing.T) {
+	// Before Init: not initialized.
+	s := database.New()(nil, gas.NewNopLogger()())
+	if err := s.CheckHealth(context.Background()); err == nil {
+		t.Fatal("expected error for uninitialized service")
+	}
+
+	// After Init: healthy.
+	s = newTestService(t)
+	if err := s.CheckHealth(context.Background()); err != nil {
+		t.Fatalf("CheckHealth: %v", err)
+	}
+
+	// After Close: unhealthy.
+	s.Close()
+	if err := s.CheckHealth(context.Background()); err == nil {
+		t.Fatal("expected error after Close")
+	}
+}
+
+func TestCheckReady(t *testing.T) {
+	s := newTestService(t)
+	if err := s.CheckReady(context.Background()); err != nil {
+		t.Fatalf("CheckReady: %v", err)
+	}
+
+	s.Close()
+	if err := s.CheckReady(context.Background()); err == nil {
+		t.Fatal("expected error after Close")
 	}
 }
 

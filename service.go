@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -35,6 +36,8 @@ type Service struct {
 
 var _ gas.Service = (*Service)(nil)
 var _ gas.DatabaseProvider = (*Service)(nil)
+var _ gas.HealthReporter = (*Service)(nil)
+var _ gas.ReadyReporter = (*Service)(nil)
 
 // Option configures a Service.
 type Option func(*Service)
@@ -261,6 +264,30 @@ func (s *Service) DB() *sql.DB {
 // and type-assert the DatabaseProvider.
 func (s *Service) Pool() *pgxpool.Pool {
 	return s.pool
+}
+
+// CheckHealth reports liveness. It only fails for states a restart
+// would resolve (uninitialized or closed). Transient connectivity
+// issues are surfaced via CheckReady instead, since database/sql and
+// pgxpool both auto-reconnect.
+func (s *Service) CheckHealth(_ context.Context) error {
+	if s.closed.Load() {
+		return errors.New("database: closed")
+	}
+	if s.db == nil && s.pool == nil {
+		return errors.New("database: not initialized")
+	}
+	return nil
+}
+
+// CheckReady reports readiness by pinging the database. A failure
+// here means traffic should not be routed to this instance until the
+// dependency is reachable again.
+func (s *Service) CheckReady(ctx context.Context) error {
+	if s.closed.Load() {
+		return errors.New("database: closed")
+	}
+	return s.Ping(ctx)
 }
 
 // Ping verifies the database connection is still alive.

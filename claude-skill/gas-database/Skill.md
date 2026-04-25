@@ -58,7 +58,7 @@ func receives `gas.ConfigProvider` and `gas.Logger` from the DI container.
 
 ## Service
 
-`Service` implements both `gas.Service` and `gas.DatabaseProvider`.
+`Service` implements `gas.Service`, `gas.DatabaseProvider`, `gas.HealthReporter`, and `gas.ReadyReporter`.
 
 ### Lifecycle (gas.Service)
 
@@ -80,6 +80,17 @@ func receives `gas.ConfigProvider` and `gas.Logger` from the DI container.
 | `Driver` | `() string`                                                  | Returns driver name based on mode/settings  |
 
 `Query` and `Exec` return an error if the service has been closed.
+
+### Probes (gas.HealthReporter, gas.ReadyReporter)
+
+| Method        | Signature                       | Description                                                                    |
+|---------------|---------------------------------|--------------------------------------------------------------------------------|
+| `CheckHealth` | `(ctx context.Context) error`   | Liveness. Fails only when uninitialized or closed; does not ping.              |
+| `CheckReady`  | `(ctx context.Context) error`   | Readiness. Fails when closed or when `Ping(ctx)` fails.                        |
+
+Auto-discovered by gas core — no extra wiring needed. Transient connectivity
+issues surface through readiness (drain traffic) rather than liveness (restart),
+since `database/sql` and `pgxpool` both auto-reconnect.
 
 ### Transactions
 
