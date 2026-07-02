@@ -1,5 +1,7 @@
 # gas-database
 
+[![Test](https://github.com/gasmod/gas-database/actions/workflows/test.yml/badge.svg)](https://github.com/gasmod/gas-database/actions/workflows/test.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/gasmod/gas-database.svg)](https://pkg.go.dev/github.com/gasmod/gas-database) ![Go Version](https://img.shields.io/github/go-mod/go-version/gasmod/gas-database) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Database connection service for the [Gas](https://github.com/gasmod/gas) ecosystem. Wraps `database/sql` and native
 `pgxpool` to provide connection management, transaction helpers, and sqlc compatibility.
 
